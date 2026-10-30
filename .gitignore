@@ -1,0 +1,32 @@
+# Local reference and docs
+/docs/research/
+/docs/drafts/
+/ref/
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.basedpyright/
+
+# Node / Frontend
+node_modules/
+dist/
+
+# Local configuration
+.env
+.env.*
+!.env.example
+
+# Temporary files
+*.log
+tmp/
+temp/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
