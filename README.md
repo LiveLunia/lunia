@@ -1,40 +1,142 @@
-# Columbula Live
+# Lunia
 
-一个以聊天陪伴、人格连续性和互动娱乐为主要功能的长期项目。
+![Python 3.13](https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white)
+![开发状态：早期开发](https://img.shields.io/badge/开发状态-早期开发-orange)
+![QQ / NapCat](https://img.shields.io/badge/QQ-NapCat-12B7F5)
+![代码检查：Ruff](https://img.shields.io/badge/代码检查-Ruff-D7FF64?logo=ruff&logoColor=black)
 
-Columbula（小鸽子）以哥伦比娅的性格为底色，在与朋友们的日常相处中逐渐形成独立的人格、记忆、兴趣和行为习惯。
+**让虚拟角色真正生活在数字世界里。**
 
-项目不以通用 AI 助手为目标，而是希望创造一个能够长期存在于数字环境中、自然参与聊天与娱乐活动的角色。
+Lunia 是一个正在开发中的开源 AI 虚拟角色框架。
 
-## 初期目标
+这是一个能够持续存在于数字环境中的角色。她可以参与日常聊天，关注身边发生的事情，也可以和大家一起玩游戏。
 
-- 在 VPS 上独立运行，不依赖特定聊天机器人框架。
-- 初期通过 AstrBot 插件接入 QQ，后续可直接连接其他协议实现。
-- 具备稳定的人格设定、动态上下文和基础长期记忆。
-- 通过单一在场状态机管理当前活动，避免同时参与多个互斥场景。
-- 能够与朋友正常聊天，并参与「谁是卧底」和 UNO。
-- 「谁是卧底」采用聊天平台文字交互，UNO 使用多人 WebUI 和专用 Agent 接口。
+她不必等待别人发出明确的指令才开始行动。面对不同的事件，她可以自行决定是否回应、如何回应，以及接下来想做什么。
 
-## 设计原则
+为此，Lunia 将围绕实时事件流、独立决策系统与角色状态管理展开设计，并尝试将决策模型与大语言模型结合，让角色拥有更自然的互动节奏。
 
-- **独立性**：人格与记忆属于 Columbula Core，不依附于 AstrBot、某个 LLM 或某款游戏。
-- **简洁性**：优先使用成熟开源组件，避免重复造轮子和过度工程化。
-- **连续性**：只有一个小鸽子，拥有连续的活动状态和可持续积累的经历。
-- **可扩展性**：未来可以接入更多聊天平台、游戏、语音和视觉能力。
-- **可维护性**：注重代码可读性、命名规范和模块边界。
+目前，Lunia 已经完成了第一个基于 QQ / NapCat 的交互原型，能够接收事件、查询用户信息，并通过简单规则作出回应。当前处于早期开发阶段，已实现 QQ / NapCat 接入、统一聊天事件及简单交互演示，尚未接入大语言模型。
 
-## 当前状态
+## 定位与长期目标
 
-项目初始化与技术调研阶段，尚未开始正式功能开发。
+Lunia 面向持续的角色陪伴，希望逐步形成稳定的人格、上下文和可积累的经历。长期设计遵循以下方向：
 
-## 技术规划
+- 核心能力独立于 AstrBot、具体模型和游戏，外部平台与游戏作为可替换的集成。
+- 只有一个主要在场状态或活动，避免同时参与互斥场景。
+- 优先复用成熟组件，保持模块职责清晰，避免提前构建复杂框架。
+- 逐步支持聊天、游戏及更多交互方式，保持角色与状态的连续性。
 
-初期以 Python 为主要开发语言，采用独立后端服务，并通过轻量适配器连接聊天平台。
+## 已实现的功能
 
-UNO WebUI 计划采用 TypeScript 与 Vue 3。
+- **NapCat 连接与 API**：WebSocket Bearer 鉴权、断线后重连、通过 `echo` 匹配请求与响应、请求超时与断线清理；提供消息、用户、群组、文件等 API 封装。
+- **统一聊天事件**：将 QQ 私聊、群聊消息、戳一戳和撤回通知转换为 `ChatEvent`；支持文本、提及、引用、图片、语音、视频、合并转发、JSON 卡片及未知消息段的结构保留。
+- **异步分发**：按事件类型订阅、取消订阅和并发执行处理器，记录处理异常，关闭时等待任务并取消超时任务。
+- **显示名称辅助**：用户与会话名称内存缓存，按需调用 Resolver 补全名称，通过 NapCat Provider 查询用户资料。
+- **聊天文本与日志**：将事件转换为终端可读文本，输出控制台日志及 `logs/lunia.log` 文件日志。
+- **运行器演示**：忽略自身消息，对包含 `lunia`（不区分大小写）的文本回复“检测到关键词”；被其他用户戳一戳时回戳。
+- **手动联调工具**：连接/API、事件接收、聊天文本显示和交互式 API 控制台脚本。
 
-具体技术选型将在现有开源项目调研后确定。
+## 规划功能（尚未实现）
 
----
+- 决策模型、主大语言模型及完整的角色行为系统。
+- 稳定人格、动态上下文、持久化长期记忆和持续状态。
+- 唯一在场状态机与互斥活动管理。
+- 「谁是卧底」、UNO 及多人游戏界面与专用交互接口。
+- 其他聊天平台、语音与视觉能力，以及 VPS 长期运行的部署方案。
 
-*Columbula Live — 一只慢慢学习、慢慢成长的小鸽子。*
+## 环境要求与快速开始
+
+使用 Python **3.13**（`>=3.13,<3.14`）和 `uv` 管理环境。运行依赖为 `websockets`，开发依赖包含 Ruff 和 pytest，具体约束见 [pyproject.toml](pyproject.toml)。QQ 联调还需要已登录且启用 WebSocket 服务的 NapCat。
+
+在项目根目录的 PowerShell 中执行：
+
+```powershell
+uv sync --locked
+uv run python --version
+uv run lunia
+```
+
+`uv run lunia` 目前仅输出“Lunia工程已初始化。”并退出，不启动聊天连接。
+
+要运行 QQ 聊天演示，先让本机 NapCat 在 `ws://127.0.0.1:3799` 提供 WebSocket 服务，并确保消息上报使用消息段数组。然后在同一个终端中输入本机 Token 并启动运行器：
+
+```powershell
+$env:NAPCAT_TOKEN = [System.Net.NetworkCredential]::new("", (Read-Host "请输入 NapCat Token" -AsSecureString)).Password
+uv run python -m lunia.core.runtime
+```
+
+运行器会连接 QQ 并执行上述自动回复与回戳演示，按 `Ctrl+C` 停止。当前运行器地址固定为上述本机端口；`NAPCAT_URL` 仅被手动 API 控制台读取。程序不自动加载 `.env`，单独复制 `.env.example` 不会设置环境变量。
+
+开发检查与手动联调说明见[开发指南](docs/development.md)。
+
+## 项目结构
+
+以下结构依据当前实际文件整理，省略 Git 元数据、缓存、虚拟环境及被忽略的本机资料：
+
+```text
+.
+├── .vscode/
+│   ├── extensions.json
+│   └── settings.json
+├── docs/
+│   ├── architecture.md
+│   ├── development.md
+│   └── events.md
+├── src/
+│   └── lunia/
+│       ├── __init__.py
+│       ├── __main__.py
+│       ├── adapters/
+│       │   └── napcat/
+│       │       ├── __init__.py
+│       │       ├── api.py
+│       │       ├── client.py
+│       │       ├── parser.py
+│       │       └── provider.py
+│       ├── core/
+│       │   ├── __init__.py
+│       │   ├── cache.py
+│       │   ├── dispatcher.py
+│       │   ├── events.py
+│       │   ├── logging.py
+│       │   └── runtime.py
+│       ├── formatters/
+│       │   ├── __init__.py
+│       │   └── ui.py
+│       └── resolvers/
+│           ├── __init__.py
+│           ├── conversation.py
+│           └── username.py
+├── tests/
+│   ├── __init__.py
+│   ├── manual_chat_ui.py
+│   ├── manual_napcat.py
+│   ├── manual_napcat_cli.py
+│   └── manual_napcat_events.py
+├── .editorconfig
+├── .env.example
+├── .gitattributes
+├── .gitignore
+├── .python-version
+├── CHANGELOG.md
+├── pyproject.toml
+├── README.md
+└── uv.lock
+```
+
+## 核心事件流与模块职责
+
+![Lunia 架构图](docs/assets/architecture.svg)
+
+`adapters/napcat` 负责协议连接、解析与平台 API；`core/events.py` 定义内部事件；`core/dispatcher.py` 负责分发；`core/runtime.py` 是当前 NapCat 演示的组装入口。`resolvers` 提供名称补全，`formatters` 负责可读文本，缓存与日志分别位于 `core/cache.py`、`core/logging.py`。
+
+**Resolver 是消费者按需调用的辅助组件，不是事件总线中的强制处理阶段。** 当前只有聊天文本消费者调用它；关键词回复与回戳消费者直接接收原始内部事件。各消费者并发执行，不保证完成顺序。
+
+## 文档入口与开发状态
+
+- [架构说明](docs/architecture.md)：模块边界、组装关系与当前限制。
+- [事件说明](docs/events.md)：事件字段、消息段及分发语义。
+- [开发指南](docs/development.md)：运行入口、配置、检查与手动联调。
+- [更新日志](CHANGELOG.md)：以 `[未发布]` 汇总当前已经实现的内容。
+
+公开说明文档暂时仅维护简体中文。项目尚处原型阶段，当前测试目录以手动联调脚本为主；尚无自动化业务测试用例或 CI 工作流。包配置中的版本字段不代表已经正式发布。

@@ -1,7 +1,8 @@
-# Local reference and docs
+# Local reference and notes
+/local/
+/ref/
 /docs/research/
 /docs/drafts/
-/ref/
 
 # Python
 .venv/
@@ -10,6 +11,8 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .basedpyright/
+build/
+*.egg-info/
 
 # Node / Frontend
 node_modules/
@@ -24,9 +27,18 @@ dist/
 *.log
 tmp/
 temp/
+/logs/
 
 # IDE / OS
-.vscode/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
 .idea/
 .DS_Store
 Thumbs.db
+
+# AI coding assistant instructions
+/AGENTS.md
+/AGENT.md
+/CLAUDE.md
+/GEMINI.md
