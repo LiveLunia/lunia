@@ -71,11 +71,13 @@ JSON 卡片内容既非字符串也非字典时，转换为 `original_type == "j
 
 1. `NapCatClient` 将 JSON 解码为字典；非法 JSON 会记录警告并跳过。
 2. `echo` 不为 `None` 的数据作为 API 响应处理，不送入聊天解析器。
-3. 其余数据交给 `parse_chat`。不支持的上报（包括心跳和其他通知）返回 `None`，不投递聊天事件。
-4. 支持的事件交给 `Runtime.on_event`，按 `event["kind"]` 调用 `EventDispatcher.dispatch`。
+3. 其余数据通过同步回调交给 `NapCatAdapter.on_event`，由 Adapter 调用 `parse_chat`。解析异常会记录并跳过；不支持的上报（包括心跳和其他通知）返回 `None`，不投递聊天事件。
+4. Adapter 按 `event["kind"]` 直接调用 `EventDispatcher.dispatch`，不等待消费者或平台查询。
 5. 分发器将同一个事件对象交给各订阅者，并发执行其异步处理器。
 
 Resolver 不在上述必经路径中。消费者需要显示名称时自行调用 Resolver，使用返回的事件副本；当前关键词回复与回戳不等待名称补全。处理器应避免修改共享的原始事件，防止影响其他消费者。
+
+Client 的 `on_event` 回调接收原始上报字典并同步返回；标准化后的 `ChatEvent` 只交给 Dispatcher 的异步消费者。API 响应不会进入 Adapter 或 Parser。
 
 分发器不等待处理器执行完成，不提供串行顺序、事件持久化或失败重投。处理异常由分发器记录；没有订阅者时不会创建任务。
 

@@ -10,16 +10,16 @@ from lunia.core.logging import setup_logging
 
 # 默认允许直接执行的只读接口；其余接口需要确认
 READ_ONLY = {
-    "get_login_info",
-    "get_status",
-    "get_version_info",
-    "get_msg",
-    "get_group_info",
-    "get_group_list",
-    "get_group_member_info",
-    "get_group_member_list",
-    "get_friend_list",
-    "get_stranger_info",
+    "system.get_login_info",
+    "system.get_status",
+    "system.get_version_info",
+    "message.get_msg",
+    "group.get_group_info",
+    "group.get_group_list",
+    "group.get_group_member_info",
+    "group.get_group_member_list",
+    "user.get_friend_list",
+    "user.get_stranger_info",
 }
 
 
@@ -36,18 +36,20 @@ def parse_value(raw: str) -> Any:
         return raw
 
 
-def get_methods() -> dict[str, Any]:
-    """获取 NapCatAPI 中公开的异步方法。"""
+def get_methods(api: NapCatAPI) -> dict[str, Any]:
+    """以“分类.方法名”列出各领域公开的异步方法。"""
     return {
-        name: member
-        for name, member in inspect.getmembers(NapCatAPI)
+        f"{domain}.{name}": member
+        for domain in ("message", "group", "user", "file", "system", "extensions")
+        for name, member in inspect.getmembers(getattr(api, domain))
         if not name.startswith("_") and inspect.iscoroutinefunction(member)
     }
 
 
 async def execute(api: NapCatAPI, name: str) -> None:
     """收集 API 参数，确认后执行。"""
-    method = getattr(api, name)
+    domain, method_name = name.split(".", 1)
+    method = getattr(getattr(api, domain), method_name)
     signature = inspect.signature(method)
     kwargs: dict[str, Any] = {}
 
@@ -103,7 +105,7 @@ async def main() -> None:
         token=os.environ["NAPCAT_TOKEN"],
     )
     api = NapCatAPI(client)
-    methods = get_methods()
+    methods = get_methods(api)
 
     task = asyncio.create_task(client.run())
 
@@ -122,7 +124,7 @@ async def main() -> None:
             if command in {"exit", "quit"}:
                 break
             if command == "help":
-                print("list: 列出 API | 输入 API 名调用 | exit: 退出")
+                print("list: 列出 API | 输入 分类.方法名 调用 | exit: 退出")
                 continue
             if command == "list":
                 print("\n".join(sorted(methods)))

@@ -1,6 +1,7 @@
 import asyncio
 import os
 
+from lunia.adapters.napcat.adapter import NapCatAdapter
 from lunia.adapters.napcat.api import NapCatAPI
 from lunia.adapters.napcat.client import NapCatClient
 from lunia.adapters.napcat.provider import NapCatUserProvider
@@ -20,11 +21,12 @@ class Runtime:
         # 1. 创建事件分发器
         self.dispatcher = EventDispatcher()
 
-        # 2. 创建 NapCat 连接
+        # 2. 创建 NapCat 事件适配器与连接
+        self.adapter = NapCatAdapter(self.dispatcher)
         self.client = NapCatClient(
             url="ws://127.0.0.1:3799",
             token=os.environ["NAPCAT_TOKEN"],
-            on_event=self.on_event,
+            on_event=self.adapter.on_event,
         )
 
         # 3. 创建 API
@@ -53,9 +55,6 @@ class Runtime:
         self.dispatcher.subscribe("chat.poke", self.on_poke)
         self.dispatcher.subscribe("chat.message", self.on_message)
 
-    async def on_event(self, event: ChatEvent) -> None:
-        self.dispatcher.dispatch(event["kind"], event)
-
     async def on_chat_ui(self, event: ChatEvent) -> None:
         await self.user_resolver.fetch_missing(event)
 
@@ -77,13 +76,13 @@ class Runtime:
             return
 
         if event["conversation_type"] == "group":
-            await self.api.send_poke(
+            await self.api.message.send_poke(
                 group_id=event["conversation_id"],
                 user_id=user_id,
             )
 
         elif event["conversation_type"] == "private":
-            await self.api.send_poke(user_id=user_id)
+            await self.api.message.send_poke(user_id=user_id)
 
     async def on_message(self, event: ChatEvent) -> None:
         if event["kind"] != "chat.message":
@@ -102,7 +101,7 @@ class Runtime:
             return
 
         if event["conversation_type"] == "group":
-            await self.api.send_group_msg(
+            await self.api.message.send_group_msg(
                 group_id=event["conversation_id"],
                 message="检测到关键词",
             )
@@ -110,7 +109,7 @@ class Runtime:
         elif event["conversation_type"] == "private":
             user_id = event["actor_id"]
             if user_id is not None:
-                await self.api.send_private_msg(
+                await self.api.message.send_private_msg(
                     user_id=user_id,
                     message="检测到关键词",
                 )

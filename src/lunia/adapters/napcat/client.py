@@ -1,25 +1,25 @@
 import asyncio
 import json
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
 from typing import Any
 from uuid import uuid4
 
 import websockets
 
-from lunia.adapters.napcat.parser import parse_chat
-from lunia.core.events import ChatEvent
 from lunia.core.logging import get_logger
 
 logger = get_logger(__name__)
-type ChatEventHandler = Callable[[ChatEvent], Awaitable[None]]
+type RawEventHandler = Callable[[dict[str, Any]], None]
 
 
 class NapCatClient:
+    """维护 NapCat 连接，向同步回调交付原始事件上报。"""
+
     def __init__(
         self,
         url: str,
         token: str,
-        on_event: ChatEventHandler | None = None,
+        on_event: RawEventHandler | None = None,
     ):
         self.url = url
         self.token = token
@@ -91,34 +91,19 @@ class NapCatClient:
             if not future.done():
                 future.set_exception(ConnectionError("NapCat 连接中断"))
 
-    async def _handle_message(self, data: dict[str, Any]) -> None:
+    def _handle_message(self, data: dict[str, Any]) -> None:
         """处理接收到的 OneBot 数据."""
         if data.get("echo") is not None:
             echo = data["echo"]
             future = self.pending.pop(str(echo), None)
             if future is not None and not future.done():
                 future.set_result(data)
-        else:
-            # if data.get("post_type") != "meta_event":
-            #     logger.debug(
-            #         "NapCat 原始事件:\n%s",
-            #         json.dumps(data, ensure_ascii=False, indent=2),
-            #     )
-            event = parse_chat(data)
-            if event is not None:
-                if event["kind"] == "chat.message":
-                    for segment in event["payload"]["segments"]:
-                        if segment["type"] == "unknown":
-                            logger.debug("未知消息类型: %s", segment["original_type"])
-                logger.debug(
-                    "Lunia 解析结果:\n%s",
-                    json.dumps(event, ensure_ascii=False, indent=2),
-                )
-                if self._on_event is not None:
-                    await self._on_event(event)
+        elif self._on_event is not None:
+            # 回调只转换和投递事件；异步消费者中的 API 查询不占用接收循环。
+            self._on_event(data)
 
     async def _receive_loop(self) -> None:
-        """持续接收 ws 消息并进行内部事件分发."""
+        """持续接收并解码 ws 数据，区分 API 响应与原始上报."""
         if self.ws is not None:
             async for message in self.ws:
                 try:
@@ -128,7 +113,7 @@ class NapCatClient:
                     continue
 
                 if isinstance(data, dict):
-                    await self._handle_message(data)
+                    self._handle_message(data)
 
     async def run(self):
         """维持 NapCat 连接与中断重连."""

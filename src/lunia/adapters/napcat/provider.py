@@ -20,14 +20,14 @@ class NapCatUserProvider:
         """获取用户昵称与会话别名"""
         try:
             if conversation_type == "group":
-                response = await self._api.get_group_member_info(
+                response = await self._api.group.get_group_member_info(
                     group_id=conversation_id,
                     user_id=user_id,
                 )
                 alias_field = "card"
 
             elif conversation_type == "private":
-                response = await self._api.get_stranger_info(
+                response = await self._api.user.get_stranger_info(
                     user_id=user_id,
                 )
                 alias_field = "remark"

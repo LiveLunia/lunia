@@ -5,7 +5,6 @@
 ![QQ / NapCat](https://img.shields.io/badge/QQ-NapCat-12B7F5)
 ![代码检查：Ruff](https://img.shields.io/badge/代码检查-Ruff-D7FF64?logo=ruff&logoColor=black)
 
-**让虚拟角色真正生活在数字世界里。**
 
 Lunia 是一个正在开发中的开源 AI 虚拟角色框架。
 
@@ -89,7 +88,15 @@ uv run python -m lunia.core.runtime
 │       ├── adapters/
 │       │   └── napcat/
 │       │       ├── __init__.py
-│       │       ├── api.py
+│       │       ├── adapter.py
+│       │       ├── api/
+│       │       │   ├── __init__.py
+│       │       │   ├── extensions.py
+│       │       │   ├── file.py
+│       │       │   ├── group.py
+│       │       │   ├── message.py
+│       │       │   ├── system.py
+│       │       │   └── user.py
 │       │       ├── client.py
 │       │       ├── parser.py
 │       │       └── provider.py
@@ -112,7 +119,9 @@ uv run python -m lunia.core.runtime
 │   ├── manual_chat_ui.py
 │   ├── manual_napcat.py
 │   ├── manual_napcat_cli.py
-│   └── manual_napcat_events.py
+│   ├── manual_napcat_events.py
+│   ├── test_napcat_adapter.py
+│   └── test_napcat_api.py
 ├── .editorconfig
 ├── .env.example
 ├── .gitattributes
@@ -128,7 +137,11 @@ uv run python -m lunia.core.runtime
 
 ![Lunia 架构图](docs/assets/architecture.svg)
 
+图示为职责提取前的首个 MVP；当前入站路径为 `NapCatClient → NapCatAdapter（Parser）→ EventDispatcher`，详见[架构说明](docs/architecture.md)。
+
 `adapters/napcat` 负责协议连接、解析与平台 API；`core/events.py` 定义内部事件；`core/dispatcher.py` 负责分发；`core/runtime.py` 是当前 NapCat 演示的组装入口。`resolvers` 提供名称补全，`formatters` 负责可读文本，缓存与日志分别位于 `core/cache.py`、`core/logging.py`。
+
+NapCat 长期作为独立 Adapter 保留，内部允许混用 OneBot 11、go-cqhttp 兼容 API 和 NapCat 扩展。调用统一使用 `api.message`、`api.group` 等分类对象；未来其他平台分别实现自己的 Adapter，当前尚未接入。
 
 **Resolver 是消费者按需调用的辅助组件，不是事件总线中的强制处理阶段。** 当前只有聊天文本消费者调用它；关键词回复与回戳消费者直接接收原始内部事件。各消费者并发执行，不保证完成顺序。
 
@@ -138,5 +151,3 @@ uv run python -m lunia.core.runtime
 - [事件说明](docs/events.md)：事件字段、消息段及分发语义。
 - [开发指南](docs/development.md)：运行入口、配置、检查与手动联调。
 - [更新日志](CHANGELOG.md)：以 `[未发布]` 汇总当前已经实现的内容。
-
-公开说明文档暂时仅维护简体中文。项目尚处原型阶段，当前测试目录以手动联调脚本为主；尚无自动化业务测试用例或 CI 工作流。包配置中的版本字段不代表已经正式发布。
