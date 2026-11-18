@@ -1,4 +1,4 @@
-"""NapCat 群组接口与群组扩展；分类不表示 OneBot 11 标准归属。"""
+"""NapCat 群组接口与群组扩展"""
 
 from typing import Any, Literal
 
@@ -6,7 +6,7 @@ from lunia.adapters.napcat.client import NapCatClient
 
 
 class GroupAPI:
-    """群组接口与群组扩展，复用传入的 Client。"""
+    """群组接口与群组扩展"""
 
     def __init__(self, client: NapCatClient) -> None:
         self.client = client

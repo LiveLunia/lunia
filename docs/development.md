@@ -66,23 +66,18 @@ NapCat 长期作为独立 Adapter 保留，允许继续使用这些混合能力�
 ## 检查与测试
 
 ```powershell
+uv run pytest
 uv run ruff check .
 uv run ruff format --check .
 ```
 
 Ruff 的目标版本为 Python 3.13，行宽为 88，规则集见项目配置；检查排除了 `ref/`。
 
-`tests/test_napcat_adapter.py` 提供离线自动化测试，覆盖原始上报与 API 响应分流、解析失败隔离、同一连接上的并发查询、名称补全兼容性、演示行为以及请求清理。使用内存 WebSocket 替身，不需要 NapCat 服务或真实 Token，也不新增测试依赖：
+自动化测试可离线运行，使用内存 WebSocket 替身和测试 Token。
 
-```powershell
-uv run pytest tests/test_napcat_adapter.py -q
-```
-
-`tests/test_napcat_api.py` 核验 108 个方法没有重复或遗漏，逐方法验证分类和共享 Client 路由，并检查请求 action、参数、超时、返回值、原有参数校验及 API 控制台的离线交互：
-
-```powershell
-uv run pytest tests/test_napcat_api.py tests/test_napcat_adapter.py -q
-```
+- `tests/test_event_bus.py` 验证总线按入队顺序投递，并在停止时排空队列。
+- `tests/test_napcat_adapter.py` 验证上报与 API 响应分流、解析失败隔离、同连接上的并发查询、名称补全、演示行为及 Runtime 启停。
+- `tests/test_napcat_api.py` 验证 108 个 API 方法的分类与共享 Client 路由，以及请求参数、超时、返回值、参数校验和控制台交互。
 
 ### 手动联调入口
 
@@ -91,8 +86,8 @@ uv run pytest tests/test_napcat_api.py tests/test_napcat_adapter.py -q
 | 命令 | 用途与范围 |
 | --- | --- |
 | `uv run python -m tests.manual_napcat` | 连接后调用 `get_login_info`，输出 API 响应与各等级日志 |
-| `uv run python -m tests.manual_napcat_events` | 持续接收事件，通过 Adapter 调试日志查看解析结果 |
-| `uv run python -m tests.manual_chat_ui` | 通过 Adapter 与 Dispatcher 显示聊天事件文本，不执行名称补全或自动回应 |
+| `uv run python -m tests.manual_napcat_events` | 持续接收并发布事件，通过 Adapter 调试日志查看解析结果 |
+| `uv run python -m tests.manual_chat_ui` | 通过总线和同步订阅回调显示原始聊天事件文本 |
 | `uv run python -m tests.manual_napcat_cli` | 交互式调用 `NapCatAPI` 的公开异步方法，输入 `list`、`help` 或 `exit` 操作 |
 
 API 控制台使用 `分类.方法名`，例如 `message.get_msg`、`group.get_group_info`、`user.get_stranger_info`；`list` 列出可调用的方法。

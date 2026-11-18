@@ -1,5 +1,5 @@
 from lunia.adapters.napcat.api import NapCatAPI
-from lunia.core.events import ConversationType
+from lunia.core.events.models import ConversationType
 from lunia.core.logging import get_logger
 
 logger = get_logger(__name__)

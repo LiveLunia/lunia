@@ -1,5 +1,5 @@
 from lunia.core.cache import ConversationCache
-from lunia.core.events import ChatEvent
+from lunia.core.events.models import ChatEvent
 
 
 class ConversationResolver:

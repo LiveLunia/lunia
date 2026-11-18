@@ -1,6 +1,6 @@
 from typing import TypedDict
 
-from lunia.core.events import ConversationType, Platform
+from lunia.core.events.models import ConversationType, Platform
 
 type _UserNameKey = tuple[
     Platform,

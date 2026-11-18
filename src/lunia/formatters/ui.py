@@ -1,4 +1,4 @@
-from lunia.core.events import ChatEvent, MessageSegment
+from lunia.core.events.models import ChatEvent, MessageSegment
 
 
 def format_segments(segments: list[MessageSegment]) -> str:

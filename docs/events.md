@@ -1,6 +1,6 @@
 # 事件说明
 
-内部事件定义见 [`core/events.py`](../src/lunia/core/events.py)，QQ 转换逻辑见 [`adapters/napcat/parser.py`](../src/lunia/adapters/napcat/parser.py)。这些 `TypedDict` 是类型约定，不是完整的运行时输入校验器。
+内部事件定义见 [`core/events/models.py`](../src/lunia/core/events/models.py)，QQ 转换逻辑见 [`adapters/napcat/parser.py`](../src/lunia/adapters/napcat/parser.py)。`TypedDict` 用于描述字段和类型。
 
 ## 公共字段
 
@@ -72,13 +72,16 @@ JSON 卡片内容既非字符串也非字典时，转换为 `original_type == "j
 1. `NapCatClient` 将 JSON 解码为字典；非法 JSON 会记录警告并跳过。
 2. `echo` 不为 `None` 的数据作为 API 响应处理，不送入聊天解析器。
 3. 其余数据通过同步回调交给 `NapCatAdapter.on_event`，由 Adapter 调用 `parse_chat`。解析异常会记录并跳过；不支持的上报（包括心跳和其他通知）返回 `None`，不投递聊天事件。
-4. Adapter 按 `event["kind"]` 直接调用 `EventDispatcher.dispatch`，不等待消费者或平台查询。
-5. 分发器将同一个事件对象交给各订阅者，并发执行其异步处理器。
+4. Adapter 调用 `EventBus.publish(event["kind"], event)`，同步将事件放入总线队列。
+5. 总线按入队顺序调用 `EventDispatcher.dispatch`。分发器按注册顺序用同步的 `EventReceiver` 回调交付同一个事件对象。
+6. Runtime 中的 `AsyncConsumer.receive` 将事件放入各自的队列。每个消费者逐条等待自己的异步处理器完成，不同消费者可并发执行。
 
-Resolver 不在上述必经路径中。消费者需要显示名称时自行调用 Resolver，使用返回的事件副本；当前关键词回复与回戳不等待名称补全。处理器应避免修改共享的原始事件，防止影响其他消费者。
+聊天文本消费者按需调用 Resolver，并使用补全后的事件副本。关键词回复与回戳使用原始事件。处理器应把原始事件视为只读，因为多个订阅者共享该对象。
 
-Client 的 `on_event` 回调接收原始上报字典并同步返回；标准化后的 `ChatEvent` 只交给 Dispatcher 的异步消费者。API 响应不会进入 Adapter 或 Parser。
+### 队列、异常与停止
 
-分发器不等待处理器执行完成，不提供串行顺序、事件持久化或失败重投。处理异常由分发器记录；没有订阅者时不会创建任务。
+- 总线队列默认容量为 1024。队列满时 `publish` 立即抛出 `asyncio.QueueFull`；总线未运行时抛出 `RuntimeError`。这两类错误会传给发布者。
+- 单个接收者抛出异常时，分发器记录异常并继续向其他订阅者投递。例如，异步消费者默认容量为 256，队列满时其 `receive` 会抛出 `asyncio.QueueFull`。异步处理器的异常由消费者记录，处理失败的事件不重投。
+- `EventBus.stop()` 停止接收并排空待投递的事件。Runtime 之后等待消费者处理完各自队列，再停止消费者任务。
 
 显示逻辑见 [`formatters/ui.py`](../src/lunia/formatters/ui.py)：名称未知时显示带 ID 的占位文本，媒体显示为 `[图片]`、`[语音]` 等标记，引用显示消息 ID；这些仅用于文本展示。

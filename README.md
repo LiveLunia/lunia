@@ -3,7 +3,7 @@
 ![Python 3.13](https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white)
 ![开发状态：早期开发](https://img.shields.io/badge/开发状态-早期开发-orange)
 ![QQ / NapCat](https://img.shields.io/badge/QQ-NapCat-12B7F5)
-![代码检查：Ruff](https://img.shields.io/badge/代码检查-Ruff-D7FF64?logo=ruff&logoColor=black)
+![Check：Ruff](https://img.shields.io/badge/Check-Ruff-D7FF64?logo=ruff&logoColor=black)
 
 
 Lunia 是一个正在开发中的开源 AI 虚拟角色框架。
@@ -29,7 +29,7 @@ Lunia 面向持续的角色陪伴，希望逐步形成稳定的人格、上下�
 
 - **NapCat 连接与 API**：WebSocket Bearer 鉴权、断线后重连、通过 `echo` 匹配请求与响应、请求超时与断线清理；提供消息、用户、群组、文件等 API 封装。
 - **统一聊天事件**：将 QQ 私聊、群聊消息、戳一戳和撤回通知转换为 `ChatEvent`；支持文本、提及、引用、图片、语音、视频、合并转发、JSON 卡片及未知消息段的结构保留。
-- **异步分发**：按事件类型订阅、取消订阅和并发执行处理器，记录处理异常，关闭时等待任务并取消超时任务。
+- **事件投递**：`EventBus` 将事件放入有界队列并按入队顺序投递；`EventDispatcher` 按事件类型同步调用订阅者。演示消费者各自排队，执行异步处理器。
 - **显示名称辅助**：用户与会话名称内存缓存，按需调用 Resolver 补全名称，通过 NapCat Provider 查询用户资料。
 - **聊天文本与日志**：将事件转换为终端可读文本，输出控制台日志及 `logs/lunia.log` 文件日志。
 - **运行器演示**：忽略自身消息，对包含 `lunia`（不区分大小写）的文本回复“检测到关键词”；被其他用户戳一戳时回戳。
@@ -103,8 +103,12 @@ uv run python -m lunia.core.runtime
 │       ├── core/
 │       │   ├── __init__.py
 │       │   ├── cache.py
-│       │   ├── dispatcher.py
-│       │   ├── events.py
+│       │   ├── events/
+│       │   │   ├── __init__.py
+│       │   │   ├── bus.py
+│       │   │   ├── consumer.py
+│       │   │   ├── dispatcher.py
+│       │   │   └── models.py
 │       │   ├── logging.py
 │       │   └── runtime.py
 │       ├── formatters/
@@ -120,6 +124,7 @@ uv run python -m lunia.core.runtime
 │   ├── manual_napcat.py
 │   ├── manual_napcat_cli.py
 │   ├── manual_napcat_events.py
+│   ├── test_event_bus.py
 │   ├── test_napcat_adapter.py
 │   └── test_napcat_api.py
 ├── .editorconfig
@@ -135,15 +140,11 @@ uv run python -m lunia.core.runtime
 
 ## 核心事件流与模块职责
 
-![Lunia 架构图](docs/assets/architecture.svg)
+![Lunia 事件系统架构图，从 NapCat 上报到同步投递与异步处理](docs/assets/architecture.svg)
 
-图示为职责提取前的首个 MVP；当前入站路径为 `NapCatClient → NapCatAdapter（Parser）→ EventDispatcher`，详见[架构说明](docs/architecture.md)。
-
-`adapters/napcat` 负责协议连接、解析与平台 API；`core/events.py` 定义内部事件；`core/dispatcher.py` 负责分发；`core/runtime.py` 是当前 NapCat 演示的组装入口。`resolvers` 提供名称补全，`formatters` 负责可读文本，缓存与日志分别位于 `core/cache.py`、`core/logging.py`。
+事件模型定义在 `core/events/models.py`，演示的装配与启停由 `core/runtime.py` 负责。订阅、异常和关闭语义见[架构说明](docs/architecture.md)。
 
 NapCat 长期作为独立 Adapter 保留，内部允许混用 OneBot 11、go-cqhttp 兼容 API 和 NapCat 扩展。调用统一使用 `api.message`、`api.group` 等分类对象；未来其他平台分别实现自己的 Adapter，当前尚未接入。
-
-**Resolver 是消费者按需调用的辅助组件，不是事件总线中的强制处理阶段。** 当前只有聊天文本消费者调用它；关键词回复与回戳消费者直接接收原始内部事件。各消费者并发执行，不保证完成顺序。
 
 ## 文档入口与开发状态
 

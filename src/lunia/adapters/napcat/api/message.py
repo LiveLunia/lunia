@@ -1,4 +1,4 @@
-"""NapCat 消息接口与消息扩展；分类不表示 OneBot 11 标准归属。"""
+"""NapCat 消息接口与消息扩展"""
 
 from typing import Any, Literal
 
@@ -6,7 +6,7 @@ from lunia.adapters.napcat.client import NapCatClient
 
 
 class MessageAPI:
-    """消息接口与消息扩展，复用传入的 Client。"""
+    """消息接口与消息扩展"""
 
     def __init__(self, client: NapCatClient) -> None:
         self.client = client

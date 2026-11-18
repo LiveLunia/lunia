@@ -6,8 +6,10 @@ from lunia.adapters.napcat.api import NapCatAPI
 from lunia.adapters.napcat.client import NapCatClient
 from lunia.adapters.napcat.provider import NapCatUserProvider
 from lunia.core.cache import ConversationCache, UserNameCache
-from lunia.core.dispatcher import EventDispatcher
-from lunia.core.events import ChatEvent
+from lunia.core.events.bus import EventBus
+from lunia.core.events.consumer import AsyncConsumer
+from lunia.core.events.dispatcher import EventDispatcher
+from lunia.core.events.models import ChatEvent
 from lunia.core.logging import get_logger, setup_logging
 from lunia.formatters.ui import format_chat_event
 from lunia.resolvers.conversation import ConversationResolver
@@ -18,11 +20,12 @@ logger = get_logger("lunia.core.runtime")
 
 class Runtime:
     def __init__(self) -> None:
-        # 1. 创建事件分发器
+        # 1. 创建事件分发
         self.dispatcher = EventDispatcher()
+        self.bus = EventBus(self.dispatcher)
 
         # 2. 创建 NapCat 事件适配器与连接
-        self.adapter = NapCatAdapter(self.dispatcher)
+        self.adapter = NapCatAdapter(self.bus)
         self.client = NapCatClient(
             url="ws://127.0.0.1:3799",
             token=os.environ["NAPCAT_TOKEN"],
@@ -48,12 +51,18 @@ class Runtime:
             self.conver_cache,
         )
 
-        # 7. 注册事件消费者
-        for kind in ("chat.message", "chat.poke", "chat.recall"):
-            self.dispatcher.subscribe(kind, self.on_chat_ui)
+        # 7. 创建事件消费者
+        self.chat_consumer = AsyncConsumer(self.on_chat_ui)
+        self.poke_consumer = AsyncConsumer(self.on_poke)
+        self.message_consumer = AsyncConsumer(self.on_message)
 
-        self.dispatcher.subscribe("chat.poke", self.on_poke)
-        self.dispatcher.subscribe("chat.message", self.on_message)
+        # 8. 订阅事件
+        for kind in ("chat.message", "chat.poke", "chat.recall"):
+            self.dispatcher.subscribe(kind, self.chat_consumer.receive)
+
+        self.dispatcher.subscribe("chat.poke", self.poke_consumer.receive)
+
+        self.dispatcher.subscribe("chat.message", self.message_consumer.receive)
 
     async def on_chat_ui(self, event: ChatEvent) -> None:
         await self.user_resolver.fetch_missing(event)
@@ -116,9 +125,20 @@ class Runtime:
 
     async def run(self) -> None:
         try:
+            await self.bus.start()
+
+            self.chat_consumer.start()
+            self.poke_consumer.start()
+            self.message_consumer.start()
+
             await self.client.run()
         finally:
-            await self.dispatcher.shutdown()
+            await self.bus.stop()
+            await asyncio.gather(
+                self.chat_consumer.stop(),
+                self.poke_consumer.stop(),
+                self.message_consumer.stop(),
+            )
 
 
 async def main() -> None:

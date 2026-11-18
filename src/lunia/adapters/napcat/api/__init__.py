@@ -1,4 +1,4 @@
-"""共享同一个 Client 的 NapCat 分类 API。"""
+"""共享同一个 Client 的 NapCat 分类 API"""
 
 from lunia.adapters.napcat.client import NapCatClient
 
@@ -13,7 +13,7 @@ __all__ = ["NapCatAPI"]
 
 
 class NapCatAPI:
-    """组合 NapCat 各功能领域的 API，不创建独立连接。"""
+    """组合 NapCat 各功能 API"""
 
     def __init__(self, client: NapCatClient) -> None:
         self.client = client

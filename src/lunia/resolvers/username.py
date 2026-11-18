@@ -1,7 +1,7 @@
 from typing import Protocol
 
 from lunia.core.cache import UserNameCache
-from lunia.core.events import ChatEvent, ConversationType, Platform
+from lunia.core.events.models import ChatEvent, ConversationType, Platform
 
 
 def make_user_name_key(

@@ -1,6 +1,6 @@
 from typing import Any
 
-from lunia.core.events import (
+from lunia.core.events.models import (
     ChatEvent,
     ChatEventBase,
     MessageEvent,

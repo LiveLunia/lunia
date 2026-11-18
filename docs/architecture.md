@@ -1,6 +1,6 @@
 # 架构说明
 
-本文记录 Lunia 的**当前实现**、**目标架构**与**近期演进边界**。当前实现以仓库第一个 NapCat MVP 为基准；目标架构是设计方向，并不表示已经落地。具体事件字段与消息段结构参见 `events.md`，运行方法参见 `development.md`。
+本文记录 Lunia 的当前 NapCat 原型及后续演进方向。事件字段与投递语义见[事件说明](events.md)，运行方法见[开发指南](development.md)。
 
 ## 定位与设计原则
 
@@ -12,43 +12,43 @@ Lunia 是面向持续存在的虚拟角色的事件驱动框架，长期定位�
 - **依赖方向清晰**：Actor 不直接依赖 NapCat、Discord 等 SDK；通过内部事件、命令、能力接口与外界交互。
 - **增量演进**：保留跑通的 MVP，复用成熟库；未来模块先记录职责，不提前创建空目录或引入复杂服务。
 
-## 当前实现（第一个 MVP）
+## 当前实现
 
-当前系统是 Python 异步 QQ 接入与事件处理原型，直接通过 WebSocket 连接 NapCat，不依赖 AstrBot。`NapCatClient` 交付原始上报，轻量 `NapCatAdapter` 调用现有 Parser 并直接投递到 Dispatcher。API 调用方统一使用分类对象；事件结构、请求语义、Resolver、缓存和演示行为保持不变。`core/runtime.py` 仍直接组装 NapCat 演示。
+当前 Runtime 直接通过 WebSocket 连接 NapCat。`NapCatClient` 将原始上报交给 `NapCatAdapter`，由 Adapter 调用 Parser 并将内部事件发布到总线。演示消费者通过分类 API 对象发起平台请求。
 
 | 模块 | 当前职责 |
 | --- | --- |
 | `__main__.py` | `lunia` 命令入口，当前仅输出初始化提示 |
 | `adapters/napcat/client.py` | WS 鉴权、接收、重连、`echo` 请求响应关联 |
-| `adapters/napcat/adapter.py` | 调用 Parser、隔离单条解析异常、按 `kind` 投递到 Dispatcher |
+| `adapters/napcat/adapter.py` | 调用 Parser、隔离单条解析异常、按 `kind` 发布到 EventBus |
 | `adapters/napcat/api/` | 消息、群组、用户、文件、系统及其他扩展请求；各分类共享一个 Client |
 | `adapters/napcat/parser.py` | 将部分 OneBot 上报解析为内部聊天事件 |
 | `adapters/napcat/provider.py` | 按需查询用户资料 |
-| `core/events.py` | 聊天事件、载荷与消息段类型约定 |
-| `core/dispatcher.py` | 按 `kind` 订阅、并发投递、跟踪任务与异常 |
+| `core/events/models.py` | 聊天事件、载荷与消息段类型约定 |
+| `core/events/bus.py` | 有界队列、按入队顺序投递、启动与停止 |
+| `core/events/dispatcher.py` | 按事件类型管理订阅，同步调用接收者并隔离投递异常 |
+| `core/events/consumer.py` | 为单个异步处理器排队，串行处理并记录异常 |
 | `core/cache.py` | 用户与会话名称的进程内缓存 |
-| `core/runtime.py` | NapCat 演示依赖装配及消费者注册 |
+| `core/runtime.py` | 装配 NapCat 演示，订阅事件并管理总线、消费者的启停 |
 | `core/logging.py` | 控制台和文件日志 |
 | `resolvers/username.py` | 学习、查询和补全用户显示名称 |
 | `resolvers/conversation.py` | 学习与补全会话名称 |
 | `formatters/ui.py` | 事件与消息段的终端可读呈现 |
 | `tests/manual_*.py` | 与真实 NapCat 联调的手动脚本 |
 
-当前数据流：
+### 数据流
 
-```text
-NapCat WS → NapCatClient → NapCatAdapter（parse_chat）
-                         → EventDispatcher → 演示消费者
-演示消费者 → NapCatAPI / Provider → NapCat WS
-```
+查看[事件系统架构图](assets/architecture.svg)或下载[可编辑的 Excalidraw 源文件](assets/architecture.excalidraw)。
 
-当前三个演示消费者负责聊天事件显示与名称补全、命中 `lunia` 的固定回复、被戳后的反戳。Resolver 由消费者按需调用，**不是**事件总线必经阶段；名称查询不会阻塞其他消费者。
+三个演示消费者分别负责聊天文本显示、命中 `lunia` 的固定回复、被戳后的回戳。聊天文本消费者按需调用 Resolver，缺少用户资料时通过 Provider 查询。每个消费者串行处理自己的队列，名称查询不会阻塞其他消费者。
 
-Client 的上报回调同步完成解析与投递，不等待异步消费者，因此消费者发起资料查询时，接收循环仍可匹配同一连接的 API 响应。Adapter 记录并跳过单条上报的解析异常；不支持的上报仍忽略。Dispatcher 自身的错误不作为解析错误吞掉。
+Client 的同步回调负责解析和入队，接收循环可以继续匹配同一连接的 API 响应。Adapter 记录并跳过单条上报的解析异常，忽略不支持的上报。总线队列满时，`publish` 抛出 `asyncio.QueueFull`，异常会传到 Client 的接收循环。单个接收者的投递异常由 Dispatcher 记录，其余订阅者仍会收到事件。
 
-当前限制：事件定义不进行完整运行时校验；部分上报不会被解析；没有有界事件队列、背压、持久化投递或同会话处理完成顺序保证；消费者并发执行。缓存为进程内数据，没有过期或容量限制。底层部分 API 返回原始结果，由调用者判断是否成功。当前 `core/runtime.py` 仍然直接依赖 NapCat。
+Runtime 先启动总线和消费者，再运行 Client。Client 退出后，Runtime 先停止总线并排空待投递事件，再等待各消费者处理完队列并停止其任务。消费者在关闭期间仍可能执行需要 NapCat 连接的处理器，此时连接已关闭，相关请求会失败并记录异常。
 
-后续待办：单独完善群成员 API 查询并验证真实 NapCat 行为；本阶段原样保留已有群成员查询分支，不新增查询能力，也不调整 `get_stranger_info().remark` 的兼容处理。
+投递只使用进程内存，队列满时立即拒绝。当前队列按消费者划分，多个消费者之间的处理完成顺序由实际执行决定。缓存为进程内数据，没有过期或容量限制。底层部分 API 返回原始结果，由调用者判断是否成功。
+
+群成员 API 查询的实机验证仍是后续工作。
 
 ## 目标工作流
 
@@ -94,7 +94,7 @@ NapCat 作为 Lunia 的独立 Adapter 长期保留，不将整个目录迁移为
 
 ### Event Bus 与顺序语义
 
-`EventBus` 负责统一发布入口与生命周期，`EventQueue` 提供有界缓冲/背压，`EventDispatcher` 负责订阅匹配、交付和异常隔离。初期只要求单进程内存队列，不承诺进程崩溃后的可靠重放。
+当前 `EventBus` 已提供统一发布入口、生命周期和有界 FIFO 队列，`EventDispatcher` 负责订阅匹配、同步交付与投递异常隔离。后续可按需要演进队列的顺序域和背压策略。
 
 区分三个顺序：**接收顺序、状态处理顺序、外部行为完成顺序**。同一顺序域（例如同一聊天会话）的顺序敏感消费者应按入队顺序串行处理；不同会话可以并发。非顺序敏感的日志消费者可并行。仅保证 FIFO 出队并不能保证异步处理完成顺序。未来 Actor 仍独立负责回复取消、合并及实际发送调度。队列满时须采用明确的等待/拒绝策略，不应默默丢弃事件。
 
@@ -120,10 +120,11 @@ src/lunia/
 │       └── api/                # 按功能领域封装混合协议能力
 ├── core/
 │   ├── events/
-│   │   ├── models.py           # 由现有 events.py 逐步迁移
-│   │   ├── bus.py              # 事件入口与生命周期
-│   │   ├── queue.py            # 排队、顺序域与背压
-│   │   └── dispatcher.py       # 保留现有订阅语义并演进
+│   │   ├── models.py           # 内部事件模型（已有）
+│   │   ├── bus.py              # 事件入口与生命周期（已有）
+│   │   ├── consumer.py         # 异步消费者队列与任务（已有）
+│   │   ├── dispatcher.py       # 同步订阅投递（已有）
+│   │   └── queue.py            # 顺序域与背压（规划）
 │   ├── actions/
 │   │   ├── models.py           # Command / Result
 │   │   └── router.py           # 找到目标 Adapter 并执行
@@ -137,7 +138,7 @@ src/lunia/
 ## 近期实施与验收
 
 1. **Adapter 整理**：NapCat 独立 Adapter 与分类 API 已整理，调用方统一使用分类对象；后续处理 Adapter 生命周期与 Registry，保留现有收发行为。
-2. **Event Bus**：接入统一 `publish`、有界队列、顺序域及异常隔离；明确关闭和队列满时的语义。
+2. **Event Bus**：统一 `publish`、有界 FIFO、异常隔离和关闭流程已接入；按会话等顺序域划分队列与扩展背压策略属于后续演进。
 3. **Runtime 闭环**：实现最小 Command/Action Router；让演示回复通过目标 Adapter 实例发送；将演示订阅者移出 Runtime，CLI 可以启动 Runtime。
 
 验收重点：原有关键词回复、反戳、名称补全正常；两个 Fake Adapter 同时注册后，来自 A 的消息回复只会到 A；同一顺序域的顺序敏感消费者不会乱序，不同域互不阻塞；单个消费者异常不击穿整个事件系统；启动与关闭能正确释放资源。优先为新增边界补少量针对性自动化测试，避免不相关的全面重构。

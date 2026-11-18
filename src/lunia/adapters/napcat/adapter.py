@@ -2,24 +2,24 @@ import json
 from typing import Any
 
 from lunia.adapters.napcat.parser import parse_chat
-from lunia.core.dispatcher import EventDispatcher
+from lunia.core.events.bus import EventBus
 from lunia.core.logging import get_logger
 
 logger = get_logger(__name__)
 
 
 class NapCatAdapter:
-    """解析 NapCat 原始上报，并将聊天事件投递到现有分发器。"""
+    """解析 NapCat 原始上报，并将事件投递到 Lunia 事件总线"""
 
-    def __init__(self, dispatcher: EventDispatcher) -> None:
-        self._dispatcher = dispatcher
+    def __init__(self, bus: EventBus) -> None:
+        self._bus = bus
 
     def on_event(self, data: dict[str, Any]) -> None:
-        """同步解析与投递，不在接收循环中等待消费者或平台查询。"""
+        """同步解析上报并将聊天事件入队。"""
         try:
             event = parse_chat(data)
         except Exception:
-            # 单条外部上报的解析失败不能中断连接；分发错误不在此捕获。
+            # 隔离单条外部上报的解析失败，发布异常由调用方处理。
             logger.exception(
                 "NapCat 上报解析失败，已跳过: post_type=%s, notice_type=%s",
                 data.get("post_type"),
@@ -38,4 +38,4 @@ class NapCatAdapter:
             "Lunia 解析结果:\n%s",
             json.dumps(event, ensure_ascii=False, indent=2),
         )
-        self._dispatcher.dispatch(event["kind"], event)
+        self._bus.publish(event["kind"], event)

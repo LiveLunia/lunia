@@ -10,8 +10,9 @@ import pytest
 
 from lunia.adapters.napcat.adapter import NapCatAdapter
 from lunia.adapters.napcat.client import NapCatClient
-from lunia.core.dispatcher import EventDispatcher
-from lunia.core.events import ChatEvent
+from lunia.core.events.bus import EventBus
+from lunia.core.events.dispatcher import EventDispatcher
+from lunia.core.events.models import ChatEvent
 from lunia.core.runtime import Runtime
 
 
@@ -101,11 +102,9 @@ def test_client_delivers_raw_reports_and_matches_out_of_order_responses():
 def test_adapter_preserves_chat_events(group, kind):
     async def scenario():
         dispatcher = EventDispatcher()
-        adapter = NapCatAdapter(dispatcher)
-        events = []
-
-        async def collect(event: ChatEvent):
-            events.append(event)
+        bus = EventBus(dispatcher)
+        adapter = NapCatAdapter(bus)
+        events: list[ChatEvent] = []
 
         raw = make_report(group=group)
         if kind == "message":
@@ -168,9 +167,12 @@ def test_adapter_preserves_chat_events(group, kind):
             "timestamp": 1700000000,
             "payload": payload,
         }
-        dispatcher.subscribe(expected["kind"], collect)
-        adapter.on_event(raw)
-        await dispatcher.shutdown()
+        dispatcher.subscribe(expected["kind"], events.append)
+        await bus.start()
+        try:
+            adapter.on_event(raw)
+        finally:
+            await bus.stop()
         assert events == [expected]
         assert raw == original
 
@@ -197,22 +199,23 @@ def test_adapter_preserves_chat_events(group, kind):
 def test_parse_failure_is_logged_and_receiving_continues(invalid_report, caplog):
     async def scenario():
         dispatcher = EventDispatcher()
-        adapter = NapCatAdapter(dispatcher)
+        bus = EventBus(dispatcher)
+        adapter = NapCatAdapter(bus)
         client = NapCatClient("ws://unused", "unused", on_event=adapter.on_event)
         socket = FakeWebSocket()
-        events = []
+        events: list[ChatEvent] = []
 
-        async def collect(event: ChatEvent):
-            events.append(event)
-
-        dispatcher.subscribe("chat.message", collect)
-        async with receiving(client, socket):
-            socket.incoming.put_nowait("not JSON")
-            socket.feed(["not an event object"])
-            socket.feed(invalid_report)
-            socket.feed({"post_type": "meta_event", "meta_event_type": "heartbeat"})
-            socket.feed(make_report())
-        await dispatcher.shutdown()
+        dispatcher.subscribe("chat.message", events.append)
+        await bus.start()
+        try:
+            async with receiving(client, socket):
+                socket.incoming.put_nowait("not JSON")
+                socket.feed(["not an event object"])
+                socket.feed(invalid_report)
+                socket.feed({"post_type": "meta_event", "meta_event_type": "heartbeat"})
+                socket.feed(make_report())
+        finally:
+            await bus.stop()
         assert len(events) == 1
         assert events[0]["kind"] == "chat.message"
 
@@ -224,15 +227,10 @@ def test_parse_failure_is_logged_and_receiving_continues(invalid_report, caplog)
     assert errors[0].exc_info is not None
 
 
-def test_adapter_does_not_hide_dispatch_errors(monkeypatch):
-    dispatcher = EventDispatcher()
-    adapter = NapCatAdapter(dispatcher)
-
-    def fail_dispatch(kind, event):
-        raise RuntimeError("dispatcher unavailable")
-
-    monkeypatch.setattr(dispatcher, "dispatch", fail_dispatch)
-    with pytest.raises(RuntimeError, match="dispatcher unavailable"):
+def test_adapter_does_not_hide_publish_errors():
+    bus = EventBus(EventDispatcher())
+    adapter = NapCatAdapter(bus)
+    with pytest.raises(RuntimeError, match="EventBus 未运行"):
         adapter.on_event(make_report())
 
 
@@ -248,7 +246,7 @@ def test_runtime_name_query_does_not_block_responses_and_preserves_remark(
         raw["sender"] = {}
         raw["message"] = [{"type": "text", "data": {"text": "你好"}}]
 
-        try:
+        async def run_client():
             async with receiving(runtime.client, socket):
                 socket.feed(raw)
                 query = await socket.requests.get()
@@ -264,16 +262,19 @@ def test_runtime_name_query_does_not_block_responses_and_preserves_remark(
                 assert query["echo"] in runtime.client.pending
 
                 socket.respond(query, {"nickname": "查询昵称", "remark": "兼容备注"})
-                await runtime.dispatcher.shutdown()
 
-            key = ("qq", "1", "private", "2", "2")
-            assert runtime.user_cache.get(key) == {
-                "nickname": "查询昵称",
-                "alias": "兼容备注",
-            }
-            assert runtime.client.pending == {}
-        finally:
-            await runtime.dispatcher.shutdown(timeout=0)
+        monkeypatch.setattr(runtime.client, "run", run_client)
+        await asyncio.wait_for(runtime.run(), 2)
+
+        key = ("qq", "1", "private", "2", "2")
+        assert runtime.user_cache.get(key) == {
+            "nickname": "查询昵称",
+            "alias": "兼容备注",
+        }
+        assert runtime.client.pending == {}
+        assert runtime.chat_consumer._task is None
+        assert runtime.poke_consumer._task is None
+        assert runtime.message_consumer._task is None
 
     with caplog.at_level(logging.INFO, logger="lunia.core.runtime"):
         asyncio.run(scenario())
@@ -352,8 +353,11 @@ def test_runtime_preserves_demo_behaviors(
                 target_id=target_id,
             )
 
-        runtime.adapter.on_event(raw)
-        await runtime.dispatcher.shutdown()
+        async def run_client():
+            runtime.adapter.on_event(raw)
+
+        monkeypatch.setattr(runtime.client, "run", run_client)
+        await asyncio.wait_for(runtime.run(), 2)
 
         for name, send in sends.items():
             if name == method:

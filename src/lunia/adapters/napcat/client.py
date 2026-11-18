@@ -13,7 +13,7 @@ type RawEventHandler = Callable[[dict[str, Any]], None]
 
 
 class NapCatClient:
-    """维护 NapCat 连接，向同步回调交付原始事件上报。"""
+    """维护 NapCat 连接，向同步回调交付原始事件上报"""
 
     def __init__(
         self,
@@ -99,11 +99,11 @@ class NapCatClient:
             if future is not None and not future.done():
                 future.set_result(data)
         elif self._on_event is not None:
-            # 回调只转换和投递事件；异步消费者中的 API 查询不占用接收循环。
+            # 回调同步解析和入队，接收循环可以继续处理 API 响应。
             self._on_event(data)
 
     async def _receive_loop(self) -> None:
-        """持续接收并解码 ws 数据，区分 API 响应与原始上报."""
+        """持续接收并解码 ws 数据."""
         if self.ws is not None:
             async for message in self.ws:
                 try:
