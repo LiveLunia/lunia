@@ -1,3 +1,5 @@
+from typing import Any
+
 from lunia.adapters.napcat.api import NapCatAPI
 from lunia.core.events.models import ConversationType
 from lunia.core.logging import get_logger
@@ -59,3 +61,32 @@ class NapCatUserProvider:
         except Exception:
             logger.exception("NapCat 用户资料查询失败")
             return None
+
+
+class NapCatMessageProvider:
+    """通过 NapCat API 提供消息接口"""
+
+    def __init__(self, api: NapCatAPI) -> None:
+        self._api = api
+
+    async def send_message(
+        self,
+        conversation_type: ConversationType,
+        conversation_id: str,
+        content: str,
+    ) -> dict[str, Any]:
+        if conversation_type == "group":
+            return await self._api.message.send_msg(
+                message_type="group",
+                group_id=conversation_id,
+                message=content,
+            )
+
+        if conversation_type == "private":
+            return await self._api.message.send_msg(
+                message_type="private",
+                user_id=conversation_id,
+                message=content,
+            )
+
+        raise ValueError(f"不支持的会话类型: {conversation_type}")

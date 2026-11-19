@@ -3,11 +3,13 @@ import os
 
 from lunia.adapters.napcat.adapter import NapCatAdapter
 from lunia.adapters.napcat.provider import NapCatUserProvider
+from lunia.core.actions.models import SendMessage
+from lunia.core.actions.router import ActionRouter
 from lunia.core.cache import ConversationCache, UserNameCache
 from lunia.core.events.bus import EventBus
 from lunia.core.events.consumer import AsyncConsumer
 from lunia.core.events.dispatcher import EventDispatcher
-from lunia.core.events.models import ChatEvent
+from lunia.core.events.models import EventEnvelope
 from lunia.core.logging import get_logger, setup_logging
 from lunia.formatters.ui import format_chat_event
 from lunia.resolvers.conversation import ConversationResolver
@@ -59,7 +61,16 @@ class Runtime:
 
         self.dispatcher.subscribe("chat.message", self.message_consumer.receive)
 
-    async def on_chat_ui(self, event: ChatEvent) -> None:
+        # 8. 注册 ActionRouter
+        self.action_router = ActionRouter()
+
+        self.action_router.register(
+            adapter_id=self.adapter.adapter_id,
+            provider=self.adapter.message_provider,
+        )
+
+    async def on_chat_ui(self, envelope: EventEnvelope) -> None:
+        event = envelope.event
         await self.user_resolver.fetch_missing(event)
 
         resolved = self.user_resolver.resolve(event)
@@ -67,7 +78,8 @@ class Runtime:
 
         logger.info(format_chat_event(resolved))
 
-    async def on_poke(self, event: ChatEvent) -> None:
+    async def on_poke(self, envelope: EventEnvelope) -> None:
+        event = envelope.event
         if event["kind"] != "chat.poke":
             return
 
@@ -88,7 +100,8 @@ class Runtime:
         elif event["conversation_type"] == "private":
             await self.adapter.api.message.send_poke(user_id=user_id)
 
-    async def on_message(self, event: ChatEvent) -> None:
+    async def on_message(self, envelope: EventEnvelope) -> None:
+        event = envelope.event
         if event["kind"] != "chat.message":
             return
 
@@ -104,19 +117,16 @@ class Runtime:
         if "lunia" not in text.lower():
             return
 
-        if event["conversation_type"] == "group":
-            await self.adapter.api.message.send_group_msg(
-                group_id=event["conversation_id"],
-                message="检测到关键词",
-            )
+        if envelope.adapter_id is None:
+            return
 
-        elif event["conversation_type"] == "private":
-            user_id = event["actor_id"]
-            if user_id is not None:
-                await self.adapter.api.message.send_private_msg(
-                    user_id=user_id,
-                    message="检测到关键词",
-                )
+        action = SendMessage(
+            adapter_id=envelope.adapter_id,
+            conversation_type=event["conversation_type"],
+            conversation_id=event["conversation_id"],
+            content="检测到关键词",
+        )
+        await self.action_router.execute(action)
 
     async def run(self) -> None:
         try:

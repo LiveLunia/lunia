@@ -9,6 +9,7 @@ from lunia.core.logging import get_logger
 from .api import NapCatAPI
 from .client import NapCatClient
 from .parser import parse_chat
+from .provider import NapCatMessageProvider
 
 logger = get_logger(__name__)
 
@@ -33,6 +34,7 @@ class NapCatAdapter:
         self.api = NapCatAPI(
             client=self.client,
         )
+        self.message_provider = NapCatMessageProvider(self.api)
         self._task: asyncio.Task[None] | None = None
 
     def on_event(self, data: dict[str, Any]) -> None:

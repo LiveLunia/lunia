@@ -4,16 +4,16 @@ import os
 from lunia.adapters.napcat.adapter import NapCatAdapter
 from lunia.core.events.bus import EventBus
 from lunia.core.events.dispatcher import EventDispatcher
-from lunia.core.events.models import ChatEvent
+from lunia.core.events.models import EventEnvelope
 from lunia.core.logging import get_logger, setup_logging
 from lunia.formatters.ui import format_chat_event
 
 logger = get_logger("lunia.test.chat_ui")
 
 
-def on_chat_ui(event: ChatEvent) -> None:
+def on_chat_ui(envelope: EventEnvelope) -> None:
     """显示事件文本"""
-    logger.info(format_chat_event(event))
+    logger.info(format_chat_event(envelope.event))
 
 
 async def main() -> None:

@@ -1,6 +1,5 @@
 import asyncio
 from collections.abc import Awaitable, Callable
-from typing import Any
 
 from lunia.core.logging import get_logger
 
@@ -8,7 +7,7 @@ from .models import EventEnvelope
 
 logger = get_logger(__name__)
 
-type AsyncHandler = Callable[[Any], Awaitable[None]]
+type AsyncHandler = Callable[[EventEnvelope], Awaitable[None]]
 
 
 class AsyncConsumer:
@@ -20,7 +19,7 @@ class AsyncConsumer:
         maxsize: int = 256,
     ) -> None:
         self.handler = handler
-        self.mailbox: asyncio.Queue[Any] = asyncio.Queue(maxsize=maxsize)
+        self.mailbox: asyncio.Queue[EventEnvelope] = asyncio.Queue(maxsize=maxsize)
         self._task: asyncio.Task[None] | None = None
 
     def receive(self, envelope: EventEnvelope) -> None:
@@ -31,11 +30,10 @@ class AsyncConsumer:
 
     async def run(self) -> None:
         while True:
-            envolope = await self.mailbox.get()
-            event = envolope.event
+            envelope = await self.mailbox.get()
 
             try:
-                await self.handler(event)
+                await self.handler(envelope)
             except Exception:
                 logger.exception("消费者处理事件失败")
             finally:
