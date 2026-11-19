@@ -2,7 +2,6 @@ import asyncio
 import os
 
 from lunia.adapters.napcat.adapter import NapCatAdapter
-from lunia.adapters.napcat.client import NapCatClient
 from lunia.core.events.bus import EventBus
 from lunia.core.events.dispatcher import EventDispatcher
 from lunia.core.events.models import ChatEvent
@@ -20,19 +19,19 @@ def on_chat_ui(event: ChatEvent) -> None:
 async def main() -> None:
     dispatcher = EventDispatcher()
     bus = EventBus(dispatcher)
-    adapter = NapCatAdapter(bus)
+    adapter = NapCatAdapter(
+        adapter_id="main",
+        bus=bus,
+        url="ws://127.0.0.1:3799",
+        token=os.environ["NAPCAT_TOKEN"],
+    )
     for kind in ("chat.message", "chat.poke", "chat.recall"):
         dispatcher.subscribe(kind, on_chat_ui)
 
-    client = NapCatClient(
-        url="ws://127.0.0.1:3799",
-        token=os.environ["NAPCAT_TOKEN"],
-        on_event=adapter.on_event,
-    )
-
     await bus.start()
+    await adapter.start()
     try:
-        await client.run()
+        await adapter.run()
     finally:
         await bus.stop()
 

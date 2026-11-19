@@ -4,6 +4,8 @@ from typing import Any
 
 from lunia.core.logging import get_logger
 
+from .models import EventEnvelope
+
 logger = get_logger(__name__)
 
 type AsyncHandler = Callable[[Any], Awaitable[None]]
@@ -21,15 +23,16 @@ class AsyncConsumer:
         self.mailbox: asyncio.Queue[Any] = asyncio.Queue(maxsize=maxsize)
         self._task: asyncio.Task[None] | None = None
 
-    def receive(self, event: Any) -> None:
-        self.mailbox.put_nowait(event)
+    def receive(self, envelope: EventEnvelope) -> None:
+        self.mailbox.put_nowait(envelope)
 
     def start(self) -> None:
         self._task = asyncio.create_task(self.run())
 
     async def run(self) -> None:
         while True:
-            event = await self.mailbox.get()
+            envolope = await self.mailbox.get()
+            event = envolope.event
 
             try:
                 await self.handler(event)

@@ -2,8 +2,6 @@ import asyncio
 import os
 
 from lunia.adapters.napcat.adapter import NapCatAdapter
-from lunia.adapters.napcat.api import NapCatAPI
-from lunia.adapters.napcat.client import NapCatClient
 from lunia.adapters.napcat.provider import NapCatUserProvider
 from lunia.core.cache import ConversationCache, UserNameCache
 from lunia.core.events.bus import EventBus
@@ -25,24 +23,21 @@ class Runtime:
         self.bus = EventBus(self.dispatcher)
 
         # 2. 创建 NapCat 事件适配器与连接
-        self.adapter = NapCatAdapter(self.bus)
-        self.client = NapCatClient(
+        self.adapter = NapCatAdapter(
+            adapter_id="main",
+            bus=self.bus,
             url="ws://127.0.0.1:3799",
             token=os.environ["NAPCAT_TOKEN"],
-            on_event=self.adapter.on_event,
         )
 
-        # 3. 创建 API
-        self.api = NapCatAPI(self.client)
-
-        # 4. 创建缓存
+        # 3. 创建缓存
         self.user_cache = UserNameCache()
         self.conver_cache = ConversationCache()
 
-        # 5. 创建 Provider
-        self.user_provider = NapCatUserProvider(self.api)
+        # 4. 创建 Provider
+        self.user_provider = NapCatUserProvider(self.adapter.api)
 
-        # 6. 创建 Resolver
+        # 5. 创建 Resolver
         self.user_resolver = UserNameResolver(
             self.user_cache,
             self.user_provider,
@@ -51,12 +46,12 @@ class Runtime:
             self.conver_cache,
         )
 
-        # 7. 创建事件消费者
+        # 6. 创建事件消费者
         self.chat_consumer = AsyncConsumer(self.on_chat_ui)
         self.poke_consumer = AsyncConsumer(self.on_poke)
         self.message_consumer = AsyncConsumer(self.on_message)
 
-        # 8. 订阅事件
+        # 7. 订阅事件
         for kind in ("chat.message", "chat.poke", "chat.recall"):
             self.dispatcher.subscribe(kind, self.chat_consumer.receive)
 
@@ -85,13 +80,13 @@ class Runtime:
             return
 
         if event["conversation_type"] == "group":
-            await self.api.message.send_poke(
+            await self.adapter.api.message.send_poke(
                 group_id=event["conversation_id"],
                 user_id=user_id,
             )
 
         elif event["conversation_type"] == "private":
-            await self.api.message.send_poke(user_id=user_id)
+            await self.adapter.api.message.send_poke(user_id=user_id)
 
     async def on_message(self, event: ChatEvent) -> None:
         if event["kind"] != "chat.message":
@@ -110,7 +105,7 @@ class Runtime:
             return
 
         if event["conversation_type"] == "group":
-            await self.api.message.send_group_msg(
+            await self.adapter.api.message.send_group_msg(
                 group_id=event["conversation_id"],
                 message="检测到关键词",
             )
@@ -118,7 +113,7 @@ class Runtime:
         elif event["conversation_type"] == "private":
             user_id = event["actor_id"]
             if user_id is not None:
-                await self.api.message.send_private_msg(
+                await self.adapter.api.message.send_private_msg(
                     user_id=user_id,
                     message="检测到关键词",
                 )
@@ -131,7 +126,8 @@ class Runtime:
             self.poke_consumer.start()
             self.message_consumer.start()
 
-            await self.client.run()
+            await self.adapter.start()
+            await self.adapter.run()
         finally:
             await self.bus.stop()
             await asyncio.gather(

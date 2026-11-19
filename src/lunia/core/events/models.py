@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import Literal, TypedDict
 
 Platform = Literal["qq", "wechat", "telegram", "discord", "web", "cli"]
@@ -129,3 +130,11 @@ class RecallEvent(ChatEventBase):
 
 
 type ChatEvent = MessageEvent | PokeEvent | RecallEvent
+
+type LuniaEvent = ChatEvent
+
+
+@dataclass(frozen=True, slots=True)
+class EventEnvelope:
+    event: LuniaEvent
+    adapter_id: str | None = None

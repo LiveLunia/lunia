@@ -1,7 +1,7 @@
 from collections.abc import Callable
 from typing import Any
 
-from ..logging import get_logger
+from lunia.core.logging import get_logger
 
 logger = get_logger(__name__)
 
