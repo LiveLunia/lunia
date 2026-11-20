@@ -5,6 +5,7 @@ description = "An autonomous AI character framework for persistent virtual compa
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
 dependencies = [
+    "openai>=3.55.1",
     "websockets>=17.4",
 ]
 
