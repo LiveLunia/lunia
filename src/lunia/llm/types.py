@@ -21,6 +21,7 @@ class Usage:
 class LLMRequest:
     model: str  # 内部模型名称
     messages: list[Message]
+    max_tokens: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

@@ -1,8 +1,26 @@
 # 事件说明
 
-内部事件定义见 [`core/events/models.py`](../src/lunia/core/events/models.py)，QQ 转换逻辑见 [`adapters/napcat/parser.py`](../src/lunia/adapters/napcat/parser.py)。`TypedDict` 用于描述字段和类型。
+内部事件与信封定义见 [`core/events/models.py`](../src/lunia/core/events/models.py)，QQ 转换逻辑见 [`adapters/napcat/parser.py`](../src/lunia/adapters/napcat/parser.py)。`TypedDict` 用于描述聊天事件字典结构，`EventEnvelope` 使用不可变 `dataclass` 包装来源元信息。
 
-## 公共字段
+## 事件包装：`EventEnvelope` 与 `LuniaEvent`
+
+当前 `LuniaEvent` 类型别名为 `ChatEvent`。Adapter 将解析后的事件包装为 `EventEnvelope` 后再投递至总线，以便下游消费者识别事件来自哪一个 Adapter 实例：
+
+```python
+@dataclass(frozen=True, slots=True)
+class EventEnvelope:
+    event: LuniaEvent
+    adapter_id: str | None = None
+```
+
+| 字段 | 类型 | 含义 |
+| --- | --- | --- |
+| `event` | `LuniaEvent` | 内部事件对象（当前为 `ChatEvent`） |
+| `adapter_id` | `str \| None` | 来源 Adapter 实例标识（例如 `NapCatAdapter` 传入的 `"main"`）；缺省为 `None` |
+
+下游需要回发消息时（如 `ChatDemo`），通过 `envelope.adapter_id` 构造 `SendMessage` 交由 `ActionRouter` 路由回原 Adapter 实例。
+
+## 公共字段（`ChatEventBase`）
 
 所有 `ChatEvent` 都包含以下字段，名称字段在无法获得时为 `None`：
 
@@ -70,18 +88,19 @@ JSON 卡片内容既非字符串也非字典时，转换为 `original_type == "j
 ## 从上报到消费者
 
 1. `NapCatClient` 将 JSON 解码为字典；非法 JSON 会记录警告并跳过。
-2. `echo` 不为 `None` 的数据作为 API 响应处理，不送入聊天解析器。
+2. `echo` 不为 `None` 的数据作为 API 响应唤醒对应 Future，不送入聊天解析器。
 3. 其余数据通过同步回调交给 `NapCatAdapter.on_event`，由 Adapter 调用 `parse_chat`。解析异常会记录并跳过；不支持的上报（包括心跳和其他通知）返回 `None`，不投递聊天事件。
-4. Adapter 调用 `EventBus.publish(event["kind"], event)`，同步将事件放入总线队列。
-5. 总线按入队顺序调用 `EventDispatcher.dispatch`。分发器按注册顺序用同步的 `EventReceiver` 回调交付同一个事件对象。
-6. Runtime 中的 `AsyncConsumer.receive` 将事件放入各自的队列。每个消费者逐条等待自己的异步处理器完成，不同消费者可并发执行。
+4. Adapter 构造 `EventEnvelope(adapter_id=self.adapter_id, event=event)`，调用 `EventBus.publish(event["kind"], envelope)`，同步尝试将 `(event_type, envelope)` 放入总线队列；返回 `False` 时记录调试日志。
+5. 总线后台任务 `lunia-event-bus` 按入队顺序调用 `EventDispatcher.dispatch(event_type, envelope)`。分发器快照当前订阅列表，按注册顺序同步调用 `EventReceiver` 回调并交付同一个 `EventEnvelope` 对象。
+6. `Runtime` 中的 `AsyncConsumer.receive(envelope)` 将信封放入各自的 `mailbox`（默认容量 256）。每个消费者在独立异步任务中串行等待处理器完成，不同消费者可并发执行。
 
-聊天文本消费者按需调用 Resolver，并使用补全后的事件副本。关键词回复与回戳使用原始事件。处理器应把原始事件视为只读，因为多个订阅者共享该对象。
+聊天文本消费者（`Runtime.on_chat_ui`）按需调用 `UserNameResolver`（其中 `fetch_missing` 仅补查 `actor_id` 的缺失资料，`resolve` 同时从缓存补全戳一戳目标和撤回原发送者）与 `ConversationResolver`，并使用补全后的事件副本；`ChatDemo` 与 `Runtime.on_poke` 直接读取 `envelope.event`（`ChatDemo` 同时使用 `envelope.adapter_id` 进行出站路由）。处理器应把原始事件字典视为只读，因为多个订阅者共享同一份对象。
 
 ### 队列、异常与停止
 
-- 总线队列默认容量为 1024。队列满时 `publish` 立即抛出 `asyncio.QueueFull`；总线未运行时抛出 `RuntimeError`。这两类错误会传给发布者。
-- 单个接收者抛出异常时，分发器记录异常并继续向其他订阅者投递。例如，异步消费者默认容量为 256，队列满时其 `receive` 会抛出 `asyncio.QueueFull`。异步处理器的异常由消费者记录，处理失败的事件不重投。
-- `EventBus.stop()` 停止接收并排空待投递的事件。Runtime 之后等待消费者处理完各自队列，再停止消费者任务。
+- **总线入队与满队处理**：总线队列默认容量为 `1024`。`publish()` 为非阻塞调用，成功返回 `True`；队列满时**不抛出 `asyncio.QueueFull`**，而是累加 `dropped_events`、在第 1 次及每 10 次拒收时记录警告日志，并返回 `False`。
+- **总线状态异常**：总线未运行（`not _accepting`）或后台投递任务已取消/异常退出/意外结束时，`publish()` 会抛出 `RuntimeError` 并传给发布者。
+- **分发与消费者异常隔离**：单个 `EventReceiver` 抛出异常时（例如某个 `AsyncConsumer` 的 `mailbox` 满导致 `receive` 抛出 `asyncio.QueueFull`），`EventDispatcher` 记录异常并继续向其余订阅者投递。异步处理器内部抛出的异常由 `AsyncConsumer.run()` 捕获并记录，处理失败的事件不重投。
+- **排空与关闭语义**：`EventBus.stop(timeout: float = 5.0)` 具有幂等性（未运行直接返回，`timeout <= 0` 抛 `ValueError`）。调用后先停止接收新事件，再在超时时间内等待队列排空并监听投递任务是否异常退出（任务异常退出抛 `RuntimeError`，超时抛 `TimeoutError`），最后取消并回收排空任务与投递任务。`Runtime` 随后并发调用各 `AsyncConsumer.stop()`，等待各自 `mailbox.join()` 并取消消费者任务。
 
 显示逻辑见 [`formatters/ui.py`](../src/lunia/formatters/ui.py)：名称未知时显示带 ID 的占位文本，媒体显示为 `[图片]`、`[语音]` 等标记，引用显示消息 ID；这些仅用于文本展示。

@@ -64,16 +64,21 @@ class OpenAICompatibleClient:
         self,
         model: str,
         messages: list[Message],
+        max_tokens: int | None = None,
     ) -> LLMResponse:
         response = await self._client.chat.completions.create(
             model=model,
             messages=to_openai_messages(messages),
+            max_tokens=max_tokens,
         )
 
-        content = response.choices[0].message.content
+        if not response.choices:
+            raise ValueError("LLM 未返回任何候选结果")
 
-        if content is None:
-            raise ValueError("模型未返回文本内容")
+        choice = response.choices[0]
+        content = choice.message.content
+        if not content or not content.strip():
+            raise ValueError("LLM 未返回有效文本")
 
         usage = None
         if response.usage is not None:
